@@ -2,7 +2,7 @@ import math
 import random
 import sys
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from board import Board
 
 import pygame
@@ -31,7 +31,7 @@ class Renderer:
                 if c is not None:
                     self._cell(x, y, c)
 
-    def _cell(self, x: int, y: int, color: Tuple[int,int,int], alpha: int|None=None):
+    def _cell(self, x: int, y: int, color: Tuple[int,int,int], alpha: Union[int,None]=None):
         r = pygame.Rect(x * self.cell, y * self.cell, self.cell, self.cell)
         pygame.draw.rect(self.screen, color, r)
         # outline
