@@ -1,35 +1,54 @@
+"""
+Tetris in Pygame — single file, no assets
+Tested design: 10x20 grid, 7-bag randomizer, soft/hard drop,
+rotate with basic wall kicks, scoring, levels, pause & game over.
+
+Controls
+- Left/Right: move
+- Down: soft drop (faster)
+- Up / X: rotate clockwise
+- Z: rotate counter-clockwise
+- Space: hard drop
+- P: pause
+- R: restart (on game over)
+- Esc: quit
+
+Tune the constants in CONFIG to adjust look/feel.
+"""
 from __future__ import annotations
 import math
 import random
 import sys
 from dataclasses import dataclass, field
 from typing import List, Tuple
+
 import pygame
 
 # ----------------------------- CONFIG ---------------------------------
 CONFIG = {
     "COLS": 10,
     "ROWS": 20,
-    "CELL": 32,
+    "CELL": 32,  # pixel size of one cell
     "FPS": 60,
+    # Gravity timing in milliseconds at level 0. Gets faster with level.
     "BASE_FALL_MS": 800,
-    "LVL_ACCEL": 0.9,
+    # Each level reduces the fall time by this percentage (clamped)
+    "LVL_ACCEL": 0.9,  # 10% faster each level
+    # DAS (delayed auto shift) and ARR (auto repeat rate) in ms for LR keys
     "DAS_MS": 160,
     "ARR_MS": 40,
 }
 
-# Keep the old NES-like SCORES for compatibility if you want to revert.
-# We'll use a clearer Tetris-style multi-line table for multi-line scoring below.
+# NES-like scoring (scaled by (level+1))
 SCORES = {1: 40, 2: 100, 3: 300, 4: 1200}
 
-# clearer line-clear scoring (classic: 1=100,2=300,3=500,4=800) scaled by (level+1)
-LINE_CLEAR_SCORES = {1: 100, 2: 300, 3: 500, 4: 800}
-
+# Colors (RGB)
 COLORS = {
     "bg": (16, 18, 20),
     "grid": (32, 36, 40),
     "ghost": (85, 85, 85),
     "text": (230, 238, 245),
+    # Tetromino colors
     "I": (80, 227, 230),
     "J": (36, 95, 223),
     "L": (223, 173, 36),
@@ -39,6 +58,9 @@ COLORS = {
     "Z": (230, 80, 80),
 }
 
+# Tetromino shape definitions via rotation states as (x,y) offsets
+# Each piece is defined around a reference (piece.x, piece.y) in grid coords.
+# Rotation system: simple 4-state with naive wall kicks [-1, 1, -2, 2]
 SHAPES = {
     "I": [
         [(-1, 0), (0, 0), (1, 0), (2, 0)],
@@ -113,9 +135,6 @@ class Board:
             [None for _ in range(cols)] for _ in range(rows)
         ]
 
-    def full_rows(self) -> list[int]:
-        return [y for y, row in enumerate(self.grid) if all(cell is not None for cell in row)]
-
     def inside(self, x: int, y: int) -> bool:
         return 0 <= x < self.cols and 0 <= y < self.rows
 
@@ -123,53 +142,25 @@ class Board:
         return self.inside(x, y) and self.grid[y][x] is None
 
     def valid(self, piece: Piece) -> bool:
-        for x, y in piece.blocks():
-            if not self.inside(x, y) or self.grid[y][x] is not None:
+        for (x, y) in piece.blocks():
+            if not self.inside(x, y):
+                return False
+            if self.grid[y][x] is not None:
                 return False
         return True
 
-    # utility used in some older code paths; not used for hold/flash flow
     def lock(self, piece: Piece) -> int:
-        for x, y in piece.blocks():
+        for (x, y) in piece.blocks():
             if 0 <= y < self.rows:
                 self.grid[y][x] = piece.color
         return self.clear_lines()
 
-    def _clear_lines(self):
-        if not self.clearing_rows:
-            return
-
-        # Build a new board excluding the cleared rows
-        new_board = []
-        for i, row in enumerate(self.board):
-            if i not in self.clearing_rows:
-                new_board.append(row)
-
-        # Add new empty rows on top
-        for _ in range(len(self.clearing_rows)):
-            new_board.insert(0, [None for _ in range(self.cols)])
-
-        # Replace the board with the updated version
-        self.board = new_board
-
-        # Update stats (access game through self.game if needed)
-        lines_cleared = len(self.clearing_rows)
-        self.game.lines += lines_cleared
-        self.game.score += [0, 100, 300, 500, 800][lines_cleared]
-
-        # Reset clear state
-        self.clearing_rows = []
-
-    
-    def _check_lines(self):
-        if self.clearing_rows:  # already clearing
-            return
-        full = [i for i, r in enumerate(self.board) if all(r)]
-        if full:
-            self.clearing_rows = full
-            self.clear_timer = 400  # ms for animation
-
-
+    def clear_lines(self) -> int:
+        new_rows = [row for row in self.grid if any(cell is None for cell in row)]
+        cleared = self.rows - len(new_rows)
+        if cleared:
+            self.grid = [[None for _ in range(self.cols)] for _ in range(cleared)] + new_rows
+        return cleared
 
     def drop_distance(self, piece: Piece) -> int:
         dy = 0
@@ -197,43 +188,36 @@ class Renderer:
             pygame.draw.line(self.screen, COLORS["grid"], (x * self.cell, 0), (x * self.cell, h))
         for y in range(board.rows + 1):
             pygame.draw.line(self.screen, COLORS["grid"], (0, y * self.cell), (w, y * self.cell))
-
-        # locked blocks & flashed rows
+        # locked blocks
         for y in range(board.rows):
             for x in range(board.cols):
                 c = board.grid[y][x]
                 if c is not None:
-                    if hasattr(board, "game") and y in board.game.clearing_rows:
-                        # slower, visible flash: toggle every 100ms
-                        flash_on = (pygame.time.get_ticks() // 100) % 2
-                        color = (255, 255, 255) if flash_on else c
-                        self._cell(x, y, color)
-                    else:
-                        self._cell(x, y, c)
+                    self._cell(x, y, c)
 
-    def _cell(self, x: int, y: int, color: Tuple[int,int,int]):
+    def _cell(self, x: int, y: int, color: Tuple[int,int,int], alpha: int|None=None):
         r = pygame.Rect(x * self.cell, y * self.cell, self.cell, self.cell)
         pygame.draw.rect(self.screen, color, r)
+        # outline
         pygame.draw.rect(self.screen, (0,0,0), r, 2)
 
     def draw_piece(self, piece: Piece):
-        for x, y in piece.blocks():
-            # don't draw blocks that are outside the board
-            if y >= 0:
-                self._cell(x, y, piece.color)
+        for (x, y) in piece.blocks():
+            self._cell(x, y, piece.color)
 
     def draw_ghost(self, piece: Piece, board: Board):
         dy = board.drop_distance(piece)
         ghost = Piece(piece.kind, piece.x, piece.y + dy, piece.rot, COLORS["ghost"])
-        for x, y in ghost.blocks():
-            if 0 <= y < board.rows and 0 <= x < board.cols:
-                r = pygame.Rect(x * self.cell + 4, y * self.cell + 4, self.cell - 8, self.cell - 8)
-                pygame.draw.rect(self.screen, COLORS["ghost"], r, 2)
+        for (x, y) in ghost.blocks():
+            r = pygame.Rect(x * self.cell + 4, y * self.cell + 4, self.cell - 8, self.cell - 8)
+            pygame.draw.rect(self.screen, COLORS["ghost"], r, 2)
 
-    def hud(self, score: int, level: int, lines: int, paused: bool, game_over: bool, hold: str|None):
-        texts = [f"Score: {score}", f"Level: {level}", f"Lines: {lines}"]
-        if hold:
-            texts.append(f"Hold: {hold}")
+    def hud(self, score: int, level: int, lines: int, paused: bool, game_over: bool):
+        texts = [
+            f"Score: {score}",
+            f"Level: {level}",
+            f"Lines: {lines}",
+        ]
         if paused:
             texts.append("PAUSED (P)")
         if game_over:
@@ -256,7 +240,6 @@ class Tetris:
         self.renderer = Renderer(self.screen, self.cell)
 
         self.board = Board(self.cols, self.rows)
-        self.board.game = self
         self.bag = SevenBag()
         self.score = 0
         self.level = 0
@@ -264,18 +247,11 @@ class Tetris:
         self.paused = False
         self.game_over = False
 
-        self.clearing_rows: list[int] = []
-        self.clear_timer = 0
-
         self.cur = self._spawn()
         self.fall_ms = CONFIG["BASE_FALL_MS"]
         self.last_fall = 0
 
-        # hold piece
-        self.hold: str | None = None
-        self.hold_used = False
-
-        # movement
+        # movement repeat
         self.left_held = False
         self.right_held = False
         self.down_held = False
@@ -286,7 +262,10 @@ class Tetris:
     def _spawn(self) -> Piece:
         k = self.bag.next()
         color = COLORS[k]
-        p = Piece(k, self.cols // 2, 1, 0, color)
+        # spawn near top; y=0 or -? We'll spawn at row 0 with offsets designed
+        p = Piece(k, self.cols // 2, 0, 0, color)
+        # nudge up a bit so rotation states fit
+        p.y = 1
         if not self.board.valid(p):
             self.game_over = True
         return p
@@ -295,6 +274,7 @@ class Tetris:
         if self.cur.kind == "O":
             return
         candidate = self.cur.rotated(dr)
+        # wall kicks
         for dx in [0, -1, 1, -2, 2]:
             test = Piece(candidate.kind, candidate.x + dx, candidate.y, candidate.rot, candidate.color)
             if self.board.valid(test):
@@ -314,45 +294,17 @@ class Tetris:
             self.cur.y += dy
         self._lock()
 
-    def _hold_piece(self):
-        # can't hold multiple times before locking
-        if self.hold_used:
-            return
-        if self.hold is None:
-            # store current kind and spawn next
-            self.hold = self.cur.kind
-            self.cur = self._spawn()
-        else:
-            # swap: current becomes the held piece
-            held_kind = self.hold
-            self.hold = self.cur.kind
-            # create a new piece from held_kind at spawn position
-            self.cur = Piece(held_kind, self.cols // 2, 1, 0, COLORS[held_kind])
-            # if spawning into invalid space -> game over
-            if not self.board.valid(self.cur):
-                self.game_over = True
-        self.hold_used = True
-
     def _lock(self):
-        # lock piece onto the board grid first so flash can show the actual cells
-        for x, y in self.cur.blocks():
-            if 0 <= y < self.rows and 0 <= x < self.cols:
-                self.board.grid[y][x] = self.cur.color
-
-        # find which rows are full now
-        cleared_rows = self.board.full_rows()
-        if cleared_rows:
-            # trigger flash; rows will be removed after the flash
-            # (only set clearing_rows if not already clearing)
-            if not self.clearing_rows:
-                self.clearing_rows = cleared_rows
-                self.clear_timer = 400  # ms total flash time
-            # keep hold_used as-is (holding remains locked until a new piece spawns)
-        else:
-            # no clearing rows: spawn next and allow hold again
-            # (spawn here ensures next piece appears immediately)
-            self.cur = self._spawn()
-            self.hold_used = False
+        cleared = self.board.lock(self.cur)
+        if cleared:
+            self.lines += cleared
+            self.score += SCORES.get(cleared, 0) * (self.level + 1)
+            # Level every 10 lines
+            new_level = self.lines // 10
+            if new_level != self.level:
+                self.level = new_level
+                self.fall_ms = max(60, int(CONFIG["BASE_FALL_MS"] * (CONFIG["LVL_ACCEL"] ** self.level)))
+        self.cur = self._spawn()
 
     # ----------------------- input handling -----------------
     def _handle_keydown(self, e: pygame.event.Event):
@@ -363,19 +315,16 @@ class Tetris:
             return
         if self.game_over:
             if e.key == pygame.K_r:
-                self.__init__()  # restart
+                self.__init__()
             return
         if self.paused:
             return
-
         if e.key in (pygame.K_UP, pygame.K_x):
             self._rotate(-1)
         elif e.key == pygame.K_z:
-            self._rotate(1)
+            self._rotate(-1)
         elif e.key == pygame.K_SPACE:
             self._hard_drop()
-        elif e.key == pygame.K_c:
-            self._hold_piece()
         elif e.key == pygame.K_LEFT:
             self.left_held = True
             self.lr_first_time["left"] = pygame.time.get_ticks()
@@ -410,47 +359,16 @@ class Tetris:
                 continue
             dx = -1 if side == "left" else 1
             moved = self._move(dx, 0)
-            if moved:
-                self.lr_last_repeat[side] = now_ms
+            self.lr_last_repeat[side] = now_ms if moved else now_ms  # still throttle
 
     # ----------------------- update & draw -------------------
     def update(self, dt_ms: int):
         if self.paused or self.game_over:
             return
-
         now = pygame.time.get_ticks()
         self._handle_lr_auto(now)
-
-        # handle clearing animation (flash)
-        if self.clearing_rows:
-            self.clear_timer -= dt_ms
-            if self.clear_timer <= 0:
-                # actually remove the rows now (pop by index from bottom to top)
-                # sorting reverse ensures indexes don't shift under us
-                for y in sorted(self.clearing_rows, reverse=True):
-                    self.board.grid.pop(y)
-                    self.board.grid.insert(0, [None for _ in range(self.cols)])
-
-                cleared = len(self.clearing_rows)
-
-                # update scoring/lines/level using LINE_CLEAR_SCORES table
-                gained = LINE_CLEAR_SCORES.get(cleared, 0) * (self.level + 1)
-                self.lines += cleared
-                self.score += gained
-
-                new_level = self.lines // 10
-                if new_level != self.level:
-                    self.level = new_level
-                    self.fall_ms = max(60, int(CONFIG["BASE_FALL_MS"] * (CONFIG["LVL_ACCEL"] ** self.level)))
-
-                self.clearing_rows.clear()
-                # spawn next piece and allow hold again
-                self.cur = self._spawn()
-                self.hold_used = False
-            return  # skip gravity during flash
-
-        # gravity & soft drop
         if self.down_held:
+            # faster soft drop
             if now - self.last_fall > max(40, self.fall_ms // 15):
                 if not self._move(0, 1):
                     self._lock()
@@ -464,10 +382,9 @@ class Tetris:
     def draw(self):
         self.renderer.draw_board(self.board)
         if not self.game_over:
-            # always draw the active piece while flashing so player sees current block
             self.renderer.draw_ghost(self.cur, self.board)
             self.renderer.draw_piece(self.cur)
-        self.renderer.hud(self.score, self.level, self.lines, self.paused, self.game_over, self.hold)
+        self.renderer.hud(self.score, self.level, self.lines, self.paused, self.game_over)
         pygame.display.flip()
 
     # ----------------------- main loop -----------------------
@@ -484,6 +401,6 @@ class Tetris:
             self.update(dt)
             self.draw()
 
-# ----------------------------- MAIN ------------------------------------
+
 if __name__ == "__main__":
     Tetris().run()
