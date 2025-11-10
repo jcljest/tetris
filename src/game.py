@@ -104,9 +104,9 @@ class Tetris:
         if self.paused:
             return
         if e.key in (pygame.K_UP, pygame.K_x):
-            self._rotate(1)
-        elif e.key == pygame.K_z:
             self._rotate(-1)
+        elif e.key == pygame.K_z:
+            self._rotate(1)
         elif e.key == pygame.K_SPACE:
             self._hard_drop()
         elif e.key == pygame.K_LEFT:
