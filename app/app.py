@@ -30,6 +30,10 @@ class App:
         self.cell   = CONFIG["CELL"]
         self.margin = CONFIG["MARGIN"]
 
+        # --- Timing ---
+        self.clock = pygame.time.Clock()
+        self.fps = CONFIG.get("FPS", 60)
+
         # --- Screen ---
         self.screen = pygame.display.set_mode((self.cols*self.cell, self.rows*self.cell))
         pygame.display.set_caption("Moddable Tetris")
@@ -66,25 +70,23 @@ class App:
             color_for_kind=self.theme.color_for_kind
         )
 
-        self.clock = pygame.time.Clock()
-
         # --- Fonts for overlays ---
         self.font_small = pygame.font.SysFont("Inter", 18)
         self.font_big   = pygame.font.SysFont("Inter", 36)
 
-        # --- Overlay callbacks ---
+        # --- Overlay callbacks wired into Pause/GameOver overlays ---
         def _resume():
             self.overlays.pop("pause")
-            if hasattr(self.match, "paused"):
-                self.match.paused = False
+            if getattr(self.match, "paused", False):
+                self.match.toggle_pause()
 
         def _quit():
             pygame.event.post(pygame.event.Event(pygame.QUIT))
 
         # --- Overlays ---
         self.overlays = OverlayHost({
-            "pause":      PauseOverlay(self.font_small, self.font_big, _resume, _quit),
-            "game_over":  GameOverOverlay(self.font_small, self.font_big, on_restart=self.reset_game),
+            "pause":     PauseOverlay(self.font_small, self.font_big, _resume, _quit),
+            "game_over": GameOverOverlay(self.font_small, self.font_big, on_restart=self.reset_game),
         })
 
     def quit_app(self):
@@ -110,7 +112,9 @@ class App:
     def run(self):
         running = True
         while running:
-            dt_ms = self.clock.tick(CONFIG["FPS"])
+            dt_ms = self.clock.tick(self.fps)
+            now_ms = pygame.time.get_ticks()
+
             # -------- events --------
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
@@ -124,14 +128,11 @@ class App:
                 # pause toggle
                 if e.type == pygame.KEYDOWN and e.key in (pygame.K_p, pygame.K_ESCAPE):
                     if self.overlays.has("pause"):
-                        # handled by overlay via _resume(), but allow hard toggle:
                         self.overlays.pop("pause")
-                        if hasattr(self.match, "paused"):
-                            self.match.paused = False
                     else:
                         self.overlays.push("pause")
-                        if hasattr(self.match, "paused"):
-                            self.match.paused = True
+                    if hasattr(self.match, "toggle_pause"):
+                        self.match.toggle_pause()
                     continue
 
                 # basic controls (adapt to your input router if you have one)
@@ -147,7 +148,7 @@ class App:
             if hasattr(self.repeater, "update"):
                 self.repeater.update(dt_ms)
             if hasattr(self.match, "update"):
-                self.match.update(dt_ms)  # or seconds; use your Match API
+                self.match.update(now_ms)
             elif hasattr(self.match, "tick"):
                 self.match.tick()
 
