@@ -1,0 +1,9 @@
+# core/shapes.py
+from typing import Protocol, List, Tuple
+
+Offset = Tuple[int, int]
+
+class ShapeSet(Protocol):
+    def kinds(self) -> List[str]: ...
+    def offsets(self, kind: str, rot: int) -> List[Offset]: ...
+    def rotations(self, kind: str) -> int: ...
