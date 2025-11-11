@@ -1,4 +1,11 @@
 # render/renderer.py
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .theme_default import DefaultTheme as Theme
+
+from .theme_default import DefaultTheme as Theme
+from .painters import BoardPainter, PiecePainter, HudPainter
+
 class Renderer:
     def __init__(self, theme: Theme, board_p: BoardPainter, piece_p: PiecePainter, hud_p: HudPainter):
         self.theme, self.bp, self.pp, self.hudp = theme, board_p, piece_p, hud_p
