@@ -1,16 +1,12 @@
 
 from __future__ import annotations
-import math
-import random
 import sys
-from dataclasses import dataclass, field
-from typing import List, Tuple
-from bag import SevenBag
-from board import Board
-from config import COLORS, SCORES, SHAPES, CONFIG
-from input_manager import InputManager
-from piece import Piece
-from renderer import Renderer
+from .bag import SevenBag
+from .board import Board
+from .config import COLORS, SCORES, SHAPES, CONFIG
+from .input_manager import InputManager
+from .piece import Piece
+from .renderer import Renderer
 
 import pygame
 
