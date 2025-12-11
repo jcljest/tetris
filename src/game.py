@@ -10,6 +10,7 @@ from board import Board
 from config import COLORS, SCORES, SHAPES, CONFIG
 from piece import Piece
 from renderer import Renderer
+from sound_manager import SoundManager
 
 import pygame
 
@@ -22,6 +23,7 @@ class Tetris:
         self.screen = pygame.display.set_mode((self.width, self.height))
         self.clock = pygame.time.Clock()
         self.renderer = Renderer(self.screen, self.cell)
+        self.sounds = SoundManager("assets", sounds={"ping": "ping.mp3"})
 
         self.board = Board(self.cols, self.rows)
         self.bag = SevenBag()
@@ -80,6 +82,7 @@ class Tetris:
 
     def _lock(self):
         cleared = self.board.lock(self.cur)
+        self.sounds.play("ping")
         if cleared:
             self.lines += cleared
             self.score += SCORES.get(cleared, 0) * (self.level + 1)
