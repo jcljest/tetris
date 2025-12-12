@@ -1,8 +1,7 @@
 
 from __future__ import annotations
-import math
-import random
 import sys
+<<<<<<< HEAD
 from dataclasses import dataclass, field
 from typing import List, Tuple
 from bag import SevenBag
@@ -11,6 +10,14 @@ from config import COLORS, SCORES, SHAPES, CONFIG
 from piece import Piece
 from renderer import Renderer
 from sound_manager import SoundManager
+=======
+from .bag import SevenBag
+from .board import Board
+from .config import COLORS, SCORES, SHAPES, CONFIG
+from .input_manager import InputManager
+from .piece import Piece
+from .renderer import Renderer
+>>>>>>> input-manager
 
 import pygame
 
@@ -37,12 +44,17 @@ class Tetris:
         self.fall_ms = CONFIG["BASE_FALL_MS"]
         self.last_fall = 0
 
-        # movement repeat
-        self.left_held = False
-        self.right_held = False
-        self.down_held = False
-        self.lr_first_time = {"left": 0, "right": 0}
-        self.lr_last_repeat = {"left": 0, "right": 0}
+        self.inputs = InputManager(
+            CONFIG,
+            on_move=self._move,
+            on_rotate=self._rotate,
+            on_hard_drop=self._hard_drop,
+            on_toggle_pause=self.toggle_pause,
+            on_restart=self.restart,
+            on_quit=self.quit,
+            is_paused=lambda: self.paused,
+            is_game_over=lambda: self.game_over,
+        )
 
     # ----------------------- helpers -----------------------
     def _spawn(self) -> Piece:
@@ -94,67 +106,22 @@ class Tetris:
         self.cur = self._spawn()
 
     # ----------------------- input handling -----------------
-    def _handle_keydown(self, e: pygame.event.Event):
-        if e.key == pygame.K_ESCAPE:
-            pygame.quit(); sys.exit(0)
-        if e.key == pygame.K_p:
-            self.paused = not self.paused
-            return
-        if self.game_over:
-            if e.key == pygame.K_r:
-                self.__init__()
-            return
-        if self.paused:
-            return
-        if e.key in (pygame.K_UP, pygame.K_x):
-            self._rotate(-1)
-        elif e.key == pygame.K_z:
-            self._rotate(1)
-        elif e.key == pygame.K_SPACE:
-            self._hard_drop()
-        elif e.key == pygame.K_LEFT:
-            self.left_held = True
-            self.lr_first_time["left"] = pygame.time.get_ticks()
-            self.lr_last_repeat["left"] = 0
-            self._move(-1, 0)
-        elif e.key == pygame.K_RIGHT:
-            self.right_held = True
-            self.lr_first_time["right"] = pygame.time.get_ticks()
-            self.lr_last_repeat["right"] = 0
-            self._move(1, 0)
-        elif e.key == pygame.K_DOWN:
-            self.down_held = True
-            self._move(0, 1)
+    def toggle_pause(self):
+        self.paused = not self.paused
 
-    def _handle_keyup(self, e: pygame.event.Event):
-        if e.key == pygame.K_LEFT:
-            self.left_held = False
-        elif e.key == pygame.K_RIGHT:
-            self.right_held = False
-        elif e.key == pygame.K_DOWN:
-            self.down_held = False
+    def restart(self):
+        self.__init__()
 
-    def _handle_lr_auto(self, now_ms: int):
-        for side, held in (("left", self.left_held), ("right", self.right_held)):
-            if not held:
-                continue
-            first_time = self.lr_first_time[side]
-            last_repeat = self.lr_last_repeat[side]
-            if now_ms - first_time < CONFIG["DAS_MS"]:
-                continue
-            if last_repeat and (now_ms - last_repeat) < CONFIG["ARR_MS"]:
-                continue
-            dx = -1 if side == "left" else 1
-            moved = self._move(dx, 0)
-            self.lr_last_repeat[side] = now_ms if moved else now_ms  # still throttle
+    def quit(self):
+        pygame.quit(); sys.exit(0)
 
     # ----------------------- update & draw -------------------
     def update(self, dt_ms: int):
         if self.paused or self.game_over:
             return
         now = pygame.time.get_ticks()
-        self._handle_lr_auto(now)
-        if self.down_held:
+        self.inputs.update(now)
+        if self.inputs.soft_drop_active:
             # faster soft drop
             if now - self.last_fall > max(40, self.fall_ms // 15):
                 if not self._move(0, 1):
@@ -180,10 +147,8 @@ class Tetris:
             dt = self.clock.tick(CONFIG["FPS"])
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
-                    pygame.quit(); sys.exit(0)
-                elif e.type == pygame.KEYDOWN:
-                    self._handle_keydown(e)
-                elif e.type == pygame.KEYUP:
-                    self._handle_keyup(e)
+                    self.quit()
+                else:
+                    self.inputs.handle_event(e)
             self.update(dt)
             self.draw()

@@ -3,11 +3,11 @@ import random
 import sys
 from dataclasses import dataclass, field
 from typing import List, Tuple, Union
-from board import Board
+from .board import Board
 
 import pygame
-from config import COLORS
-from piece import Piece
+from .config import COLORS
+from .piece import Piece
 
 class Renderer:
     def __init__(self, screen: pygame.Surface, cell: int):

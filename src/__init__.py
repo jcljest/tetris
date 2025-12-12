@@ -1,1 +1,0 @@
-from tetris_mod.game import Tetris

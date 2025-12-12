@@ -4,7 +4,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from typing import List, Tuple
-from piece import Piece
+from .piece import Piece
 
 
 
