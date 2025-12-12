@@ -1,24 +1,13 @@
 
 from __future__ import annotations
 import sys
-<<<<<<< HEAD
-from dataclasses import dataclass, field
-from typing import List, Tuple
-from bag import SevenBag
-from board import Board
-from config import COLORS, SCORES, SHAPES, CONFIG
-from piece import Piece
-from renderer import Renderer
-from sound_manager import SoundManager
-=======
+from .sound_manager import SoundManager
 from .bag import SevenBag
 from .board import Board
 from .config import COLORS, SCORES, SHAPES, CONFIG
 from .input_manager import InputManager
 from .piece import Piece
 from .renderer import Renderer
->>>>>>> input-manager
-
 import pygame
 
 class Tetris:
